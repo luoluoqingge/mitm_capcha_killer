@@ -14,9 +14,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from mitmproxy import http, options
 from mitmproxy.tools import dump
 
-# ---------------------------------------------------------------------------
-#  常量与运行时状态
-# ---------------------------------------------------------------------------
 SETTINGS_PATH = 'config.json'
 WEBUI_BIND = ('0.0.0.0', 8899)
 PROXY_LISTEN_PORT = 8081
@@ -36,9 +33,6 @@ OcrClass = getattr(ocr_module, "DdddOcr", None)
 print("Loading OCR engine …")
 ocr_engine = OcrClass(show_ad=False)
 
-# ---------------------------------------------------------------------------
-#  字符集过滤
-# ---------------------------------------------------------------------------
 CHARSET_MAP = {
     0: string.digits,
     1: string.ascii_lowercase,
@@ -61,9 +55,6 @@ def get_allowed_chars(code):
     return set(raw) if raw is not None else None
 
 
-# ---------------------------------------------------------------------------
-#  日志
-# ---------------------------------------------------------------------------
 def append_log(msg):
     if not logging_active:
         return
@@ -76,9 +67,6 @@ def append_log(msg):
         pass
 
 
-# ---------------------------------------------------------------------------
-#  配置读写
-# ---------------------------------------------------------------------------
 DEFAULT_SETTINGS = {
     "switchs": 1,
     "whitelist_switch": 0,
@@ -104,9 +92,6 @@ def write_settings(data):
         json.dump(data, fh, indent=4)
 
 
-# ---------------------------------------------------------------------------
-#  HTTP 原始报文分发器（使用 requests.Session 重写）
-# ---------------------------------------------------------------------------
 def dispatch_raw_http(url, raw_packet):
     """解析原始 HTTP 请求模板并通过 requests.Session 发送。"""
     lines = raw_packet.replace('\r\n', '\n').split('\n')
@@ -132,9 +117,6 @@ def dispatch_raw_http(url, raw_packet):
         return sess.send(sess.prepare_request(req), timeout=5, verify=False)
 
 
-# ---------------------------------------------------------------------------
-#  图片提取（策略链模式）
-# ---------------------------------------------------------------------------
 def deep_find_base64(node):
     """递归搜索 JSON 结构中的 base64 编码图片值。"""
     if isinstance(node, dict):
@@ -190,9 +172,6 @@ def extract_image_bytes(resp):
     return resp.content, 'raw-fallback'
 
 
-# ---------------------------------------------------------------------------
-#  正则提取
-# ---------------------------------------------------------------------------
 def apply_regex_extraction(resp, extract_from, pattern):
     """从响应体或响应头中通过正则提取数据。返回提取的字符串或空字符串。"""
     try:
@@ -212,9 +191,6 @@ def apply_regex_extraction(resp, extract_from, pattern):
         return 'regex_error'
 
 
-# ---------------------------------------------------------------------------
-#  OCR 识别
-# ---------------------------------------------------------------------------
 def run_ocr(img_data, charset_code):
     """通过 OCR 引擎识别图片并按字符集过滤结果。"""
     try:
@@ -244,9 +220,6 @@ def run_ocr(img_data, charset_code):
     return text
 
 
-# ---------------------------------------------------------------------------
-#  核心：识别与提取（编排器模式调用子函数）
-# ---------------------------------------------------------------------------
 def unpack_profile(data):
     """将配置列表解包为语义化字典。"""
     return {
@@ -333,10 +306,6 @@ def recognize_and_extract(profile_data):
 
     return ocr_text, regex_result
 
-
-# ---------------------------------------------------------------------------
-#  WebUI HTTP 处理器
-# ---------------------------------------------------------------------------
 class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
@@ -439,9 +408,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-# ---------------------------------------------------------------------------
-#  mitmproxy 拦截插件
-# ---------------------------------------------------------------------------
 class InterceptAddon:
     """mitmproxy 插件：拦截包含 @cap@N@ 标记的请求并替换为识别结果。"""
 
@@ -531,10 +497,6 @@ class InterceptAddon:
                     return True
         return False
 
-
-# ---------------------------------------------------------------------------
-#  代理生命周期管理
-# ---------------------------------------------------------------------------
 async def proxy_main():
     global proxy_master, proxy_loop, proxy_alive
     proxy_loop = asyncio.get_running_loop()
@@ -585,9 +547,6 @@ def shutdown_proxy():
         return False
 
 
-# ---------------------------------------------------------------------------
-#  WebUI 服务器
-# ---------------------------------------------------------------------------
 def run_webui():
     os.makedirs('temp', exist_ok=True)
     srv = HTTPServer(WEBUI_BIND, DashboardHandler)
@@ -603,10 +562,6 @@ def cleanup():
         except Exception as exc:
             print(f"Cleanup error: {exc}")
 
-
-# ---------------------------------------------------------------------------
-#  入口
-# ---------------------------------------------------------------------------
 if __name__ == '__main__':
     atexit.register(cleanup)
     launch_proxy()
