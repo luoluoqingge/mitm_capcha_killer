@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>遐跑代理配置</title>
+    <!-- Element UI CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css" />
+    <style>
+      body {
+        margin: 0;
+        background-color: #f0f2f5;
+        font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+      }
+      .app-container {
+        padding: 20px;
+      }
+      .box-card {
+        margin-bottom: 20px;
+      }
+      .header {
+        background: #fff;
+        padding: 0 20px;
+        height: 60px;
+        line-height: 60px;
+        box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 20px;
+        color: #303133;
+        font-weight: 600;
+      }
+      .el-form-item {
+        margin-bottom: 18px;
+      }
+      .profile-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .log-container {
+        background: #2b2b2b;
+        color: #f0f0f0;
+        padding: 10px;
+        border-radius: 4px;
+        height: 600px;
+        overflow-y: auto;
+        font-family: Consolas, Monaco, monospace;
+        font-size: 12px;
+        border: 1px solid #e4e7ed;
+      }
+      .log-item {
+        padding: 2px 0;
+        border-bottom: 1px dashed #444;
+        word-break: break-all;
+      }
+      .log-item:last-child {
+        border-bottom: none;
+      }
+      .captcha-history-container {
+        height: 600px;
+        overflow-y: auto;
+        padding-right: 5px;
+      }
+      .captcha-card {
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        background: #fff;
+      }
+      .captcha-img {
+        max-height: 60px;
+        max-width: 120px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-right: 15px;
+        cursor: pointer;
+      }
+      .captcha-info {
+        flex: 1;
+      }
+      .captcha-result {
+        font-size: 20px;
+        font-weight: bold;
+        color: #409eff;
+      }
+      .captcha-meta {
+        font-size: 12px;
+        color: #909399;
+        margin-top: 5px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .section-title {
+        margin-bottom: 15px;
+        font-weight: bold;
+        color: #303133;
+        border-left: 4px solid #409eff;
+        padding-left: 10px;
+        font-size: 14px;
+      }
+      .no-data {
+        text-align: center;
+        color: #909399;
+        padding: 40px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="header">
+        <div style="display: flex; align-items: center">
+          <i class="el-icon-cpu" style="font-size: 24px; color: #409eff; margin-right: 10px"></i>
+          <h1>遐跑验证码代理系统</h1>
+        </div>
+        <div>
+          <el-switch v-model="proxyRunning" active-text="代理监听中" inactive-text="代理已关闭" @change="toggleProxy" active-color="#13ce66" inactive-color="#ff4949" style="margin-right: 20px"></el-switch>
+          <el-button type="primary" size="small" icon="el-icon-plus" @click="addProfile">添加配置</el-button>
+          <el-button type="success" size="small" icon="el-icon-check" @click="saveConfig" :loading="saving">保存配置</el-button>
+        </div>
+      </div>
+
+      <div class="app-container">
+        <!-- Global Settings -->
+        <el-card class="box-card">
+          <div slot="header" class="clearfix">
+            <span><i class="el-icon-setting"></i> <strong>全局设置</strong></span>
+          </div>
+          <el-form label-width="120px" size="small">
+            <el-form-item label="白名单模式">
+              <el-switch v-model="config.whitelist_switch" :active-value="1" :inactive-value="0" active-text="启用 (只处理白名单主机)"></el-switch>
+            </el-form-item>
+            <el-form-item label="白名单主机" v-if="config.whitelist_switch === 1">
+              <el-select v-model="config.whitelist_hosts" multiple filterable allow-create default-first-option placeholder="输入主机名后回车 (如: www.example.com)" style="width: 100%">
+                <el-option v-for="host in config.whitelist_hosts" :key="host" :label="host" :value="host"> </el-option>
+              </el-select>
+              <div style="font-size: 12px; color: #909399; margin-top: 5px"><i class="el-icon-info"></i> 只有列表中的主机名请求会被处理，其他请求将被直接放行。支持输入新主机名后按回车添加。支持正则表达式（如 .*.example.com）。</div>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- Config Section -->
+        <el-row :gutter="20">
+          <el-col :span="24" v-for="(profile, id) in config.profiles" :key="id">
+            <el-card class="box-card">
+              <div slot="header" class="profile-header">
+                <span>
+                  <strong>配置 {{ id }}</strong>
+                  <el-tag size="small" type="info" style="margin-left: 10px">关键字：@cap@{{ id }}@</el-tag>
+                </span>
+                <el-button type="danger" size="mini" icon="el-icon-delete" circle @click="deleteProfile(id)"></el-button>
+              </div>
+              <el-form label-width="120px" size="small">
+                <el-form-item label="目标URL">
+                  <el-input v-model="profile[0]" placeholder="http://example.com/captcha.jpg（示例）"></el-input>
+                </el-form-item>
+
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="请求模式">
+                      <el-select v-model="profile[1]" style="width: 100%">
+                        <el-option label="普通（GET）" value="1"></el-option>
+                        <el-option label="复杂（自定义请求）" value="2"></el-option>
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="输出模式">
+                      <el-select v-model="profile[2]" style="width: 100%">
+                        <el-option label="混合（默认）" value="6"></el-option>
+                        <el-option label="数字" value="0"></el-option>
+                        <el-option label="小写" value="1"></el-option>
+                        <el-option label="仅返回JSON/正则" value="8"></el-option>
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+
+                <el-form-item label="原始请求" v-if="profile[1] == '2'">
+                  <el-input type="textarea" :rows="6" v-model="profile[3]" placeholder="在此粘贴复杂模式的原始HTTP请求"></el-input>
+                </el-form-item>
+
+                <el-divider content-position="left"><i class="el-icon-s-tools"></i> 高级模式（关键字：@cap@x{{ id }}@）</el-divider>
+
+                <el-form-item label="启用高级">
+                  <el-switch v-model="profile[6]" active-value="true" inactive-value="false"></el-switch>
+                </el-form-item>
+
+                <div v-if="profile[6] === 'true'">
+                  <el-row :gutter="20">
+                    <el-col :span="8">
+                      <el-form-item label="来源">
+                        <el-select v-model="profile[4]" style="width: 100%">
+                          <el-option label="响应体" value="0"></el-option>
+                          <el-option label="响应头" value="1"></el-option>
+                        </el-select>
+                      </el-form-item>
+                    </el-col>
+                    <el-col :span="16">
+                      <el-form-item>
+                        <template slot="label">
+                          正则表达式
+                          <el-tooltip effect="dark" placement="top">
+                            <div slot="content">点击问号查看详细帮助</div>
+                            <i class="el-icon-question" style="color: #409eff; cursor: pointer; margin-left: 5px" @click="showRegexHelp"></i>
+                          </el-tooltip>
+                        </template>
+                        <el-input v-model="profile[5]" placeholder="例如：uuid: (.*?)"></el-input>
+                      </el-form-item>
+                    </el-col>
+                  </el-row>
+                </div>
+              </el-form>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- Monitor Section -->
+        <el-card class="box-card">
+          <div slot="header" class="profile-header">
+            <span><i class="el-icon-monitor"></i> <strong>实时监控</strong></span>
+            <div>
+              <el-switch v-model="loggingEnabled" active-text="记录日志" inactive-text="停止记录" @change="toggleLogging" style="margin-right: 20px"></el-switch>
+              <el-tag size="small" type="success" style="margin-right: 10px" v-if="autoRefresh">自动刷新中</el-tag>
+              <el-button type="text" :icon="autoRefresh ? 'el-icon-video-pause' : 'el-icon-video-play'" @click="toggleAutoRefresh">{{ autoRefresh ? '暂停' : '自动刷新' }}</el-button>
+              <el-button type="text" icon="el-icon-refresh" @click="fetchLogs">手动刷新</el-button>
+            </div>
+          </div>
+
+          <el-row :gutter="20">
+            <!-- Left Column: Text Logs -->
+            <el-col :span="12">
+              <div class="section-title" style="display: flex; justify-content: space-between; align-items: center">
+                <span>运行日志</span>
+                <el-button type="text" icon="el-icon-delete" style="color: #f56c6c; padding: 0" @click="clearLogs('text')">清空</el-button>
+              </div>
+              <div class="log-container" ref="logContainer">
+                <div v-if="logs.length === 0" class="no-data">暂无日志</div>
+                <div v-for="(log, index) in logs" :key="index" class="log-item">{{ log }}</div>
+              </div>
+            </el-col>
+
+            <!-- Right Column: Image History -->
+            <el-col :span="12">
+              <div class="section-title" style="display: flex; justify-content: space-between; align-items: center">
+                <span>最近识别记录 ({{ records.length }}/20)</span>
+                <el-button type="text" icon="el-icon-delete" style="color: #f56c6c; padding: 0" @click="clearLogs('image')">清空</el-button>
+              </div>
+              <div class="captcha-history-container">
+                <div v-if="records.length === 0" class="no-data">暂无识别记录</div>
+                <el-card v-for="(rec, idx) in records" :key="idx" class="captcha-card" shadow="hover" :body-style="{ padding: '10px', display: 'flex', width: '100%' }">
+                  <div style="position: relative">
+                    <img :src="'data:image/png;base64,' + rec.image" class="captcha-img" v-if="rec.image" @click="showImage(rec.image)" />
+                    <div class="captcha-img" style="display: flex; align-items: center; justify-content: center; background: #f5f7fa; color: #909399" v-else>无图</div>
+                  </div>
+
+                  <div class="captcha-info">
+                    <div style="display: flex; justify-content: space-between; align-items: center">
+                      <span class="captcha-result">{{ rec.result }}</span>
+                      <el-tag size="mini" :type="rec.result_regex ? 'warning' : 'info'" v-if="rec.result_regex" :title="rec.result_regex"> {{ rec.result_regex.length > 32 ? rec.result_regex.substring(0, 32) + '...' : rec.result_regex }} </el-tag>
+                    </div>
+                    <div class="captcha-meta">
+                      <span><i class="el-icon-time"></i> {{ rec.time }}</span>
+                      <span :title="rec.url" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px"><i class="el-icon-link"></i> {{ rec.url }}</span>
+                    </div>
+                  </div>
+                </el-card>
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
+      </div>
+
+      <el-dialog :visible.sync="dialogVisible" width="50%">
+        <img :src="dialogImageUrl" style="width: 100%" v-if="dialogImageUrl" />
+      </el-dialog>
+
+      <el-dialog title="正则表达式书写规范" :visible.sync="regexHelpVisible" width="70%" top="5vh">
+        <div style="max-height: 70vh; overflow-y: auto">
+          <el-alert title="基本原理" type="info" :closable="false" style="margin-bottom: 15px"> 高级模式使用正则表达式从验证码响应中提取 Token、Session ID 等数据。提取结果将替换请求中的 <code>@cap@x{ID}@</code> 标签。 </el-alert>
+
+          <el-divider content-position="left"><i class="el-icon-document"></i> 响应体模式 (来源=响应体)</el-divider>
+          <el-table :data="regexBodyExamples" stripe border size="small" style="margin-bottom: 20px">
+            <el-table-column prop="scene" label="常见场景" width="150"></el-table-column>
+            <el-table-column prop="response" label="响应示例"></el-table-column>
+            <el-table-column prop="regex" label="正则表达式" width="280">
+              <template slot-scope="scope">
+                <code style="color: #e6a23c">{{ scope.row.regex }}</code>
+              </template>
+            </el-table-column>
+            <el-table-column prop="result" label="提取结果" width="180"></el-table-column>
+          </el-table>
+
+          <el-divider content-position="left"><i class="el-icon-s-operation"></i> 响应头模式 (来源=响应头)</el-divider>
+          <el-alert type="warning" :closable="false" style="margin-bottom: 15px"> <strong>格式要求：</strong><code>响应头名称|正则表达式</code>，用竖线 <code>|</code> 分隔响应头名称和正则。 </el-alert>
+          <el-table :data="regexHeaderExamples" stripe border size="small" style="margin-bottom: 20px">
+            <el-table-column prop="scene" label="常见场景" width="150"></el-table-column>
+            <el-table-column prop="header" label="响应头示例"></el-table-column>
+            <el-table-column prop="regex" label="正则表达式" width="300">
+              <template slot-scope="scope">
+                <code style="color: #e6a23c">{{ scope.row.regex }}</code>
+              </template>
+            </el-table-column>
+            <el-table-column prop="result" label="提取结果" width="150"></el-table-column>
+          </el-table>
+
+          <el-divider content-position="left"><i class="el-icon-info"></i> 正则语法速查</el-divider>
+          <el-table :data="regexSyntax" stripe border size="small">
+            <el-table-column prop="syntax" label="语法" width="120">
+              <template slot-scope="scope">
+                <code>{{ scope.row.syntax }}</code>
+              </template>
+            </el-table-column>
+            <el-table-column prop="desc" label="说明"></el-table-column>
+            <el-table-column prop="example" label="示例" width="250">
+              <template slot-scope="scope">
+                <code style="color: #67c23a">{{ scope.row.example }}</code>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <span slot="footer">
+          <el-button type="primary" @click="regexHelpVisible = false">我知道了</el-button>
+        </span>
+      </el-dialog>
+    </div>
+
+    <!-- Vue & Element UI JS -->
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+
+    <script>
+      var initialConfig = CONFIG_JSON_PLACEHOLDER;
+
+      new Vue({
+        el: "#app",
+        data: {
+          config: initialConfig,
+          logs: [],
+          records: [],
+          saving: false,
+          autoRefresh: true,
+          timer: null,
+          dialogVisible: false,
+          dialogImageUrl: "",
+          loggingEnabled: true,
+          proxyRunning: true,
+          regexHelpVisible: false,
+          regexBodyExamples: [
+            { scene: "JSON UUID", response: '{"uuid":"a1b2c3d4-e5f6","code":200}', regex: '"uuid":"(.*?)"', result: "a1b2c3d4-e5f6" },
+            { scene: "JSON Token", response: '{"data":{"token":"eyJhbGci..."}}', regex: '"token":"(.*?)"', result: "eyJhbGci..." },
+            { scene: "JSON SessionId", response: '{"sessionId":"sess_abc123"}', regex: '"sessionId":"([^"]+)"', result: "sess_abc123" },
+            { scene: "HTML 图片Base64", response: '<img src="data:image/png;base64,iVBOR...">', regex: "base64,([A-Za-z0-9+/=]+)", result: "iVBOR..." },
+            { scene: "HTML 隐藏字段", response: '<input name="_csrf" value="xYz123">', regex: 'name="_csrf" value="(.*?)"', result: "xYz123" },
+            { scene: "纯文本验证Key", response: "captcha_key=KEY12345", regex: "captcha_key=([A-Z0-9]+)", result: "KEY12345" },
+          ],
+          regexHeaderExamples: [
+            { scene: "Set-Cookie Session", header: "Set-Cookie: SESSION=abc123xyz; Path=/", regex: "Set-Cookie|SESSION=([^;]+)", result: "abc123xyz" },
+            { scene: "Set-Cookie JSESSIONID", header: "Set-Cookie: JSESSIONID=node0abc...", regex: "Set-Cookie|JSESSIONID=([^;]+)", result: "node0abc..." },
+            { scene: "X-Csrf-Token", header: "X-Csrf-Token: csrf_token_value", regex: "X-Csrf-Token|(.+)", result: "csrf_token_value" },
+            { scene: "Authorization", header: "Authorization: Bearer eyJhbG...", regex: "Authorization|Bearer (.+)", result: "eyJhbG..." },
+          ],
+          regexSyntax: [
+            { syntax: "(.*?)", desc: "非贪婪匹配任意字符（常用于引号内内容）", example: '"id":"(.*?)" 匹配 "id":"123"' },
+            { syntax: '([^"]+)', desc: "匹配非引号的任意字符", example: '"key":"([^"]+)" 更精确匹配' },
+            { syntax: "([^;]+)", desc: "匹配非分号的任意字符（用于Cookie）", example: "SESSION=([^;]+)" },
+            { syntax: "([A-Za-z0-9]+)", desc: "只匹配字母数字", example: "token=([A-Za-z0-9]+)" },
+            { syntax: "([A-Za-z0-9+/=]+)", desc: "匹配Base64编码字符", example: "base64,([A-Za-z0-9+/=]+)" },
+            { syntax: "(.+)", desc: "贪婪匹配任意字符（直到行尾）", example: "Bearer (.+)" },
+          ],
+        },
+        created() {
+          this.fetchConfig();
+          this.fetchLogs();
+          this.startTimer();
+        },
+        beforeDestroy() {
+          this.stopTimer();
+        },
+        methods: {
+          startTimer() {
+            if (this.timer) clearInterval(this.timer);
+            this.timer = setInterval(this.fetchLogs, 3000);
+            this.autoRefresh = true;
+          },
+          stopTimer() {
+            if (this.timer) clearInterval(this.timer);
+            this.timer = null;
+            this.autoRefresh = false;
+          },
+          toggleAutoRefresh() {
+            if (this.autoRefresh) {
+              this.stopTimer();
+            } else {
+              this.startTimer();
+            }
+          },
+          showImage(b64) {
+            this.dialogImageUrl = "data:image/png;base64," + b64;
+            this.dialogVisible = true;
+          },
+          showRegexHelp() {
+            this.regexHelpVisible = true;
+          },
+          fetchConfig() {
+            fetch("/get_config")
+              .then((response) => response.json())
+              .then((data) => {
+                this.config = data;
+                // Ensure profiles is an object
+                if (Array.isArray(this.config.profiles)) {
+                  var obj = {};
+                  this.config.profiles.forEach((p, i) => {
+                    obj[i + 1] = p;
+                  });
+                  this.config.profiles = obj;
+                }
+              });
+          },
+          fetchLogs() {
+            fetch("/get_logs")
+              .then((response) => response.json())
+              .then((data) => {
+                // Check if format is old or new
+                if (Array.isArray(data)) {
+                  this.logs = data;
+                } else {
+                  this.logs = data.logs || [];
+                  this.records = data.records || [];
+                  if (data.logging_enabled !== undefined) {
+                    this.loggingEnabled = data.logging_enabled;
+                  }
+                  if (data.proxy_running !== undefined) {
+                    this.proxyRunning = data.proxy_running;
+                  }
+                }
+              })
+              .catch((e) => console.error(e));
+          },
+          toggleLogging(val) {
+            fetch("/toggle_logging", {
+              method: "POST",
+              body: JSON.stringify({ enabled: val }),
+            })
+              .then(() => {
+                this.$message.success(val ? "日志记录已开启" : "日志记录已暂停");
+              })
+              .catch(() => {
+                this.loggingEnabled = !val; // Revert on error
+                this.$message.error("操作失败");
+              });
+          },
+          toggleProxy(val) {
+            var action = val ? 'start' : 'stop';
+            fetch("/toggle_proxy", {
+              method: "POST",
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: action }),
+            })
+              .then((response) => response.json())
+              .then((data) => {
+                this.proxyRunning = data.running;
+                this.$message.success(data.message);
+              })
+              .catch(() => {
+                this.proxyRunning = !val; // Revert on error
+                this.$message.error("操作失败");
+              });
+          },
+          clearLogs(type) {
+            this.$confirm("确定要清空" + (type === "text" ? "运行日志" : "识别记录") + "吗？", "提示", {
+              confirmButtonText: "确定",
+              cancelButtonText: "取消",
+              type: "warning",
+            })
+              .then(() => {
+                fetch("/clear_logs", {
+                  method: "POST",
+                  body: JSON.stringify({ type: type }),
+                }).then(() => {
+                  this.$message.success("已清空");
+                  this.fetchLogs(); // Refresh immediately
+                });
+              })
+              .catch(() => {});
+          },
+          addProfile() {
+            const keys = Object.keys(this.config.profiles).map(Number);
+            if (keys.length >= 10) {
+              this.$message.warning("最多允许 10 个配置。");
+              return;
+            }
+            let newId = 1;
+            while (keys.includes(newId)) {
+              newId++;
+            }
+            // Default profile: [url, type, output_mode, complex_req, source, regex, adv_switch]
+            this.$set(this.config.profiles, String(newId), ["", "1", "6", "", "0", '"uuid":"(.*?)"', "false"]);
+            this.$message.success("已添加配置 " + newId + "。");
+          },
+          deleteProfile(id) {
+            this.$confirm("确定删除配置 " + id + " 吗？", "警告", {
+              confirmButtonText: "确定",
+              cancelButtonText: "取消",
+              type: "warning",
+            })
+              .then(() => {
+                this.$delete(this.config.profiles, id);
+                this.$message.success("配置已删除");
+              })
+              .catch(() => {});
+          },
+          saveConfig() {
+            this.saving = true;
+            fetch("/save_config", {
+              method: "POST",
+              body: JSON.stringify(this.config),
+            })
+              .then(() => {
+                this.saving = false;
+                this.$message({
+                  message: "配置保存成功！",
+                  type: "success",
+                });
+              })
+              .catch(() => {
+                this.saving = false;
+                this.$message.error("配置保存失败。");
+              });
+          },
+        },
+      });
+    </script>
+  </body>
+</html>
